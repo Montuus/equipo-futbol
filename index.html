@@ -9,16 +9,22 @@
     html, body { margin: 0; padding: 0; background: #0F2A1E; }
     #root { min-height: 100vh; }
   </style>
+</head>
+<body>
+  <div id="root"></div>
   
-  <!-- Cargamos Firebase desde la red oficial de Google -->
+  <!-- Primero cargamos tu aplicación para que el diseño se pinte a la perfección -->
+  <script src="app.bundle.js"></script>
+
+  <!-- Después cargamos Firebase en segundo plano sin interferir en los estilos -->
   <script type="module">
     import { initializeApp } from "https://gstatic.com";
     import { getDatabase, ref, set, onValue } from "https://gstatic.com";
 
-    // 1. CONFIGURACIÓN COMPLETA DE TU PROYECTO SANTA EULALIA
+    // Configuración de tu proyecto Santa Eulalia
     const firebaseConfig = {
       apiKey: "AIzaSyC1Ouz9TxjqBrH5YgA8igVqz3N_g1fmFt4",
-      authDomain: "santa-eulalia-gestor.firebaseapp.com",
+      authDomain: "://firebaseapp.com",
       databaseURL: "https://firebaseio.com",
       projectId: "santa-eulalia-gestor",
       storageBucket: "santa-eulalia-gestor.firebasestorage.app",
@@ -26,16 +32,13 @@
       appId: "1:420519463966:web:25474de313ed64a8bb720f"
     };
 
-    // Inicializamos Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const equipoRef = ref(db, 'datos_equipo');
 
-    // Variable de control para evitar bucles infinitos de guardado
     let bloqueadoPorSincronizacion = false;
 
-    // 2. ESCUCHA EN TIEMPO REAL (NUBE -> NAVEGADOR)
-    // Cuando tú o cualquier jugador cambie algo en la app, se actualiza en todos los móviles al instante
+    // Escucha en tiempo real (Nube -> Navegador)
     onValue(equipoRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -43,55 +46,52 @@
         let huboCambios = false;
 
         Object.keys(data).forEach(key => {
+          // Ignoramos por completo cualquier estado visual o pestaña activa para no romper el diseño
+          if (key.toLowerCase().includes('tab') || key.toLowerCase().includes('active') || key.toLowerCase().includes('vista')) return;
+
           if (localStorage.getItem(key) !== data[key]) {
             localStorage.setItem(key, data[key]);
             huboCambios = true;
           }
         });
 
-        // Si hay cambios de otro jugador, recargamos discretamente la vista para que React los pinte
+        // Si hay cambios reales de jugadores, avisamos a la interfaz de forma segura
         if (huboCambios) {
-          console.log("¡Datos del equipo actualizados desde la nube!");
-          // Forzamos un pequeño evento click fantasma en la pantalla para obligar a React a refrescar sus listas
-          document.body.dispatchEvent(new Event('click', { bubbles: true }));
+          console.log("¡Datos sincronizados desde la nube!");
+          // Forzamos un renderizado seguro disparando un evento nativo
+          window.dispatchEvent(new Event('resize'));
         }
         
-        setTimeout(() => { bloqueadoPorSincronizacion = false; }, 600);
+        setTimeout(() => { bloqueadoPorSincronizacion = false; }, 800);
       }
     });
 
-    // 3. SUBIDA AUTOMÁTICA (NAVEGADOR -> NUBE)
-    // Recopila tus listas locales de jugadores, partidos, etc., y las sube a la base de datos colectiva
+    // Subida de datos (Navegador -> Nube)
     function subirDatosALaNube() {
       if (bloqueadoPorSincronizacion) return;
       
       const datosLocales = {};
       
-      // Filtramos las llaves importantes del LocalStorage que genera la app para no saturar la red
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        // Excluimos textos temporales incompletos de los formularios para subir solo las listas confirmadas
-        if (!key.startsWith('_se_input_')) { 
+        // Filtramos para subir solo listas puras, no configuraciones del menú
+        if (!key.startsWith('_se_input_') && !key.toLowerCase().includes('tab') && !key.toLowerCase().includes('active') && !key.toLowerCase().includes('vista')) { 
           datosLocales[key] = localStorage.getItem(key);
         }
       }
 
       if (Object.keys(datosLocales).length > 0) {
-        set(equipoRef, datosLocales)
-          .then(() => console.log("Sincronizado en la nube para todo el equipo."))
-          .catch((error) => console.error("Error al sincronizar con Firebase:", error));
+        set(equipoRef, datosLocales).catch((err) => console.error(err));
       }
     }
 
-    // Disparadores automáticos: guarda cada vez que tocas la pantalla o cambias de pestaña
-    document.addEventListener('click', () => setTimeout(subirDatosALaNube, 400));
-    document.addEventListener('change', () => setTimeout(subirDatosALaNube, 400));
+    // Guardar solo cuando se interactúe con formularios o botones de acción
+    document.addEventListener('submit', () => setTimeout(subirDatosALaNube, 500));
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('button')) setTimeout(subirDatosALaNube, 500);
+    });
     window.addEventListener('beforeunload', subirDatosALaNube);
-    setInterval(subirDatosALaNube, 6000); // Respaldo periódico automático cada 6 segundos
+    setInterval(subirDatosALaNube, 10000); // Respaldo cada 10 segundos
   </script>
-</head>
-<body>
-  <div id="root"></div>
-  <script src="app.bundle.js"></script>
 </body>
 </html>
