@@ -4,14 +4,105 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>Santa Eulalia · Gestor del equipo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://tailwindcss.com"></script>
   <style>
     html, body { margin: 0; padding: 0; background: #0F2A1E; }
     #root { min-height: 100vh; }
   </style>
+  <script>
+    // --- LIMPIEZA AUTOMÁTICA Y PREVENCIÓN DE ERRORES VISUALES ---
+    (function() {
+      // Borramos cualquier rastro del menú roto que se haya quedado atascado en tu pantalla
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.toLowerCase().includes('tab') || key.toLowerCase().includes('active') || key.toLowerCase().includes('vista') || key.toLowerCase().includes('menu') || key.toLowerCase().includes('current'))) {
+          localStorage.removeItem(key);
+        }
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="root"></div>
+  
+  <!-- Cargamos tu aplicación original sana -->
   <script src="app.bundle.js"></script>
+
+  <!-- Firebase totalmente aislado al final del archivo -->
+  <script type="module">
+    import { initializeApp } from "https://gstatic.com";
+    import { getDatabase, ref, set, onValue } from "https://gstatic.com";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1Ouz9TxjqBrH5YgA8igVqz3N_g1fmFt4",
+      authDomain: "://firebaseapp.com",
+      databaseURL: "https://firebaseio.com",
+      projectId: "santa-eulalia-gestor",
+      storageBucket: "santa-eulalia-gestor.firebasestorage.app",
+      messagingSenderId: "420519463966",
+      appId: "1:420519463966:web:25474de313ed64a8bb720f"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const equipoRef = ref(db, 'datos_equipo');
+
+    let bloqueadoPorSincronizacion = false;
+
+    // Filtro estricto: la nube solo maneja datos deportivos puros
+    function esDatoSeguro(key) {
+      const k = key.toLowerCase();
+      if (k.includes('tab') || k.includes('active') || k.includes('vista') || k.includes('menu') || k.includes('ui') || k.includes('current')) return false;
+      return true;
+    }
+
+    // Recibir cambios de internet (Nube -> Navegador)
+    onValue(equipoRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        bloqueadoPorSincronizacion = true;
+        let huboCambios = false;
+
+        Object.keys(data).forEach(key => {
+          if (!esDatoSeguro(key)) return; 
+          if (localStorage.getItem(key) !== data[key]) {
+            localStorage.setItem(key, data[key]);
+            huboCambios = true;
+          }
+        });
+
+        if (huboCambios) {
+          // Forzamos actualización visual segura en React simulando rediseño de ventana
+          window.dispatchEvent(new Event('resize')); 
+        }
+        setTimeout(() => { bloqueadoPorSincronizacion = false; }, 800);
+      }
+    });
+
+    // Subir tus listas a internet (Navegador -> Nube)
+    function subirDatosALaNube() {
+      if (bloqueadoPorSincronizacion) return;
+      const datosLocales = {};
+      
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key.startsWith('_se_input_') && esDatoSeguro(key)) { 
+          datosLocales[key] = localStorage.getItem(key);
+        }
+      }
+
+      if (Object.keys(datosLocales).length > 0) {
+        set(equipoRef, datosLocales).catch((err) => console.error(err));
+      }
+    }
+
+    // Escuchamos clicks en botones de añadir, convocar o guardar para subir los cambios
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('button')) {
+        setTimeout(subirDatosALaNube, 500);
+      }
+    });
+    window.addEventListener('beforeunload', subirDatosALaNube);
+  </script>
 </body>
 </html>
