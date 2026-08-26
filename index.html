@@ -9,100 +9,13 @@
     html, body { margin: 0; padding: 0; background: #0F2A1E; }
     #root { min-height: 100vh; }
   </style>
+  <script>
+    // Esto borra el atasco de datos que desconfiguró tu menú visual
+    localStorage.clear();
+  </script>
 </head>
 <body>
   <div id="root"></div>
-  
-  <!-- Cargamos tu aplicación original en primer lugar -->
   <script src="app.bundle.js"></script>
-
-  <!-- Firebase aislado que trabaja en segundo plano sin tocar menús ni estilos -->
-  <script type="module">
-    import { initializeApp } from "https://gstatic.com";
-    import { getDatabase, ref, set, onValue } from "https://gstatic.com";
-
-    // Credenciales de tu base de datos de Google
-    const firebaseConfig = {
-      apiKey: "AIzaSyC1Ouz9TxjqBrH5YgA8igVqz3N_g1fmFt4",
-      authDomain: "://firebaseapp.com",
-      databaseURL: "https://firebaseio.com",
-      projectId: "santa-eulalia-gestor",
-      storageBucket: "santa-eulalia-gestor.firebasestorage.app",
-      messagingSenderId: "420519463966",
-      appId: "1:420519463966:web:25474de313ed64a8bb720f"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const equipoRef = ref(db, 'datos_equipo');
-
-    let ignorarCambiosDeNube = false;
-
-    // Filtro de seguridad: Nos aseguramos de NO guardar ni tocar cosas de menús o botones
-    function esFiltroSeguro(key) {
-      const k = key.toLowerCase();
-      // Si la clave tiene que ver con pestañas, menús, vistas, estados de botones, etc., NO la tocamos
-      if (k.includes('tab') || k.includes('active') || k.includes('vista') || k.includes('index') || k.includes('menu') || k.includes('ui') || k.includes('select')) {
-        return false;
-      }
-      return true;
-    }
-
-    // 1. ESCUCHA EN TIEMPO REAL (NUBE -> NAVEGADOR)
-    onValue(equipoRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        ignorarCambiosDeNube = true;
-        let huboCambiosReales = false;
-
-        Object.keys(data).forEach(key => {
-          if (!esFiltroSeguro(key)) return; // Protección total para el diseño
-
-          if (localStorage.getItem(key) !== data[key]) {
-            localStorage.setItem(key, data[key]);
-            huboCambiosReales = true;
-          }
-        });
-
-        // Si ha cambiado la lista de jugadores o partidos de verdad, avisamos a la app de forma nativa
-        if (huboCambiosReales) {
-          console.log("¡Datos deportivos actualizados!");
-          window.dispatchEvent(new Event('resize')); 
-        }
-        
-        setTimeout(() => { ignorarCambiosDeNube = false; }, 1000);
-      }
-    });
-
-    // 2. ENVÍO DE DATOS AUTOMÁTICO (NAVEGADOR -> NUBE)
-    function subirDatosALaNube() {
-      if (ignorarCambiosDeNube) return;
-      
-      const datosLocales = {};
-      
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        // Filtramos para subir solo jugadores, asistencias y resultados puros
-        if (!key.startsWith('_se_input_') && esFiltroSeguro(key)) { 
-          datosLocales[key] = localStorage.getItem(key);
-        }
-      }
-
-      if (Object.keys(datosLocales).length > 0) {
-        set(equipoRef, datosLocales).catch((err) => console.error("Error al subir:", err));
-      }
-    }
-
-    // Guardar solo cuando se añaden cosas mediante interacciones deportivas
-    document.addEventListener('submit', () => setTimeout(subirDatosALaNube, 500));
-    document.addEventListener('click', (e) => {
-      // Guardar si se pulsa Añadir, Guardar, etc., pero no si cambias de pestaña
-      if (e.target.closest('button') && !e.target.innerText.toLowerCase().includes('plantilla')) {
-        setTimeout(subirDatosALaNube, 500);
-      }
-    });
-    window.addEventListener('beforeunload', subirDatosALaNube);
-    setInterval(subirDatosALaNube, 12000); // Respaldo silencioso de seguridad cada 12 segundos
-  </script>
 </body>
 </html>
