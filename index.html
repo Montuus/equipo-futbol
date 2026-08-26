@@ -3,102 +3,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>Santa Eulalia · Gestor de Equipo</title>
-  
-  <!-- CDN de Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
+  <title>Santa Eulalia · Gestor del equipo</title>
+  <script src="https://tailwindcss.com"></script>
   <style>
-    /* Estilos base del sistema */
-    html, body {
-      margin: 0;
-      padding: 0;
-      background-color: #0F2A1E; /* Verde corporativo de Santa Eulalia */
-    }
-    #root {
-      min-height: 100vh;
-    }
+    html, body { margin: 0; padding: 0; background: #0F2A1E; }
+    #root { min-height: 100vh; }
   </style>
+  
+  <!-- Cargamos Firebase desde la red oficial de Google -->
+  <script type="module">
+    import { initializeApp } from "https://gstatic.com";
+    import { getDatabase, ref, set, onValue } from "https://gstatic.com";
 
-  <script>
-    /**
-     * --- MOTOR DE PERSISTENCIA AUTOMÁTICA (LOCALSTORAGE) ---
-     * Diseñado para interceptar, respaldar y recuperar los estados de la aplicación de forma transparente.
-     */
-    (function() {
-      const STORAGE_PREFIX = '_se_';
-      const storageKeys = ['jugadores', 'partidos', 'entrenamientos', 'asistencias', 'resultados', 'equipo_data'];
-      const localBackup = {};
+    // 1. CONFIGURACIÓN COMPLETA DE TU PROYECTO SANTA EULALIA
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1Ouz9TxjqBrH5YgA8igVqz3N_g1fmFt4",
+      authDomain: "santa-eulalia-gestor.firebaseapp.com",
+      databaseURL: "https://firebaseio.com",
+      projectId: "santa-eulalia-gestor",
+      storageBucket: "santa-eulalia-gestor.firebasestorage.app",
+      messagingSenderId: "420519463966",
+      appId: "1:420519463966:web:25474de313ed64a8bb720f"
+    };
 
-      // 1. Carga previa de datos guardados en el navegador
-      storageKeys.forEach(key => {
-        const savedData = localStorage.getItem(STORAGE_PREFIX + key);
-        if (savedData) {
-          try {
-            localBackup[key] = JSON.parse(savedData);
-          } catch (error) {
-            console.error(`Error al parsear los datos de: ${key}`, error);
+    // Inicializamos Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const equipoRef = ref(db, 'datos_equipo');
+
+    // Variable de control para evitar bucles infinitos de guardado
+    let bloqueadoPorSincronizacion = false;
+
+    // 2. ESCUCHA EN TIEMPO REAL (NUBE -> NAVEGADOR)
+    // Cuando tú o cualquier jugador cambie algo en la app, se actualiza en todos los móviles al instante
+    onValue(equipoRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        bloqueadoPorSincronizacion = true;
+        let huboCambios = false;
+
+        Object.keys(data).forEach(key => {
+          if (localStorage.getItem(key) !== data[key]) {
+            localStorage.setItem(key, data[key]);
+            huboCambios = true;
           }
+        });
+
+        // Si hay cambios de otro jugador, recargamos discretamente la vista para que React los pinte
+        if (huboCambios) {
+          console.log("¡Datos del equipo actualizados desde la nube!");
+          // Forzamos un pequeño evento click fantasma en la pantalla para obligar a React a refrescar sus listas
+          document.body.dispatchEvent(new Event('click', { bubbles: true }));
         }
-      });
+        
+        setTimeout(() => { bloqueadoPorSincronizacion = false; }, 600);
+      }
+    });
 
-      // Expositor seguro para el estado inicial de React
-      window.__PRELOADED_STATE__ = localBackup;
+    // 3. SUBIDA AUTOMÁTICA (NAVEGADOR -> NUBE)
+    // Recopila tus listas locales de jugadores, partidos, etc., y las sube a la base de datos colectiva
+    function subirDatosALaNube() {
+      if (bloqueadoPorSincronizacion) return;
+      
+      const datosLocales = {};
+      
+      // Filtramos las llaves importantes del LocalStorage que genera la app para no saturar la red
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        // Excluimos textos temporales incompletos de los formularios para subir solo las listas confirmadas
+        if (!key.startsWith('_se_input_')) { 
+          datosLocales[key] = localStorage.getItem(key);
+        }
+      }
 
-      // 2. Respaldo masivo preventivo al cerrar o refrescar la pestaña
-      window.addEventListener('beforeunload', () => {
-        storageKeys.forEach(key => {
-          if (window[key] !== undefined && window[key] !== null) {
-            localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(window[key]));
-          }
-        });
-      });
+      if (Object.keys(datosLocales).length > 0) {
+        set(equipoRef, datosLocales)
+          .then(() => console.log("Sincronizado en la nube para todo el equipo."))
+          .catch((error) => console.error("Error al sincronizar con Firebase:", error));
+      }
+    }
 
-      // 3. Sistema de guardado periódico (Intervalo de seguridad cada 2 segundos)
-      setInterval(() => {
-        storageKeys.forEach(key => {
-          // Guarda variables globales sincronizadas por la aplicación
-          if (window[key] !== undefined && window[key] !== null) {
-            localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(window[key]));
-          }
-        });
-
-        // Persistencia activa para entradas de texto, formularios y selectores abiertos
-        const formInputs = document.querySelectorAll('input, select, textarea');
-        formInputs.forEach(input => {
-          const inputId = input.id || input.name;
-          if (inputId) {
-            localStorage.setItem(`${STORAGE_PREFIX}input_${inputId}`, input.value);
-          }
-        });
-      }, 2000);
-
-      // 4. Restauración automática de formularios tras la carga del DOM
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-          const formInputs = document.querySelectorAll('input, select, textarea');
-          formInputs.forEach(input => {
-            const inputId = input.id || input.name;
-            const savedValue = localStorage.getItem(`${STORAGE_PREFIX}input_${inputId}`);
-            
-            if (savedValue !== null) {
-              input.value = savedValue;
-              // Dispara el evento nativo para que React detecte el cambio de valor
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-          });
-        }, 500);
-      });
-    })();
+    // Disparadores automáticos: guarda cada vez que tocas la pantalla o cambias de pestaña
+    document.addEventListener('click', () => setTimeout(subirDatosALaNube, 400));
+    document.addEventListener('change', () => setTimeout(subirDatosALaNube, 400));
+    window.addEventListener('beforeunload', subirDatosALaNube);
+    setInterval(subirDatosALaNube, 6000); // Respaldo periódico automático cada 6 segundos
   </script>
 </head>
-<body class="antialiased text-slate-100">
-
-  <!-- Contenedor principal de la aplicación React / Claude App -->
+<body>
   <div id="root"></div>
-
-  <!-- Script empaquetado de la aplicación -->
   <script src="app.bundle.js"></script>
-
 </body>
 </html>
